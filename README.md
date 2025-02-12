@@ -1,6 +1,6 @@
 # `sfts`
 
-Short Fourier Transform for Fresnel-weighted Template Summation
+Short Fourier Transforms for Fresnel-weighted Template Summation
 
 Implementation of gravitational-wave data-analysis tools described in [Tenorio & Gerosa (2025)][1]
 to operate using Short Fourier Transforms (SFTs).
