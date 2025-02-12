@@ -1,0 +1,39 @@
+[build-system]
+requires = [
+    "setuptools",
+    "setuptools_scm",
+]
+
+[project]
+authors = [
+    {name = "Rodrigo Tenorio", email = "rodrigo.tenorio.marquez@gmail.com"}
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Natural Language :: English",
+    "Intended Audience :: Science/Research",
+]
+dependencies = ["jax", "jaxopt"]
+description = """Scalable data-analysis framework for \
+                long-duration gravitational-wave signals"""
+dynamic = ["version"]
+license = {file = "LICENSE.md"}
+name = "sfts"
+readme = "README.md"
+requires-python = ">= 3.12"
+
+[project.optional-dependencies]
+cuda = ["jax[cuda12]"]
+
+[project.urls]
+Source = "https://github.com/Rodrigo-Tenorio/sfts"
+"Issue tracker" = "https://github.com/Rodrigo-Tenorio/sfts/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["sfts"]
+
+
+[tool.setuptools_scm]
