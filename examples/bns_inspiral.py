@@ -11,7 +11,7 @@ following any particular waveform conventions.
 import jax
 import jax.numpy as jnp
 
-from sfts import kernels, waveform
+from sfts import kernels, iphenot
 
 try:
     import matplotlib.pyplot as plt
@@ -23,34 +23,34 @@ def generate_waveform(times, coeffs):
     """
     Returns the amplitude, phase, frequency, and frequency derivative
     of a *single* waveform with coefficients `coeffs` as generated
-    by `waveform.bunch_of_coeffs` for *an array* of timestamps `times`.
+    by `iphenot.bunch_of_coeffs` for *an array* of timestamps `times`.
 
 
     Parameters
     ----------
     times: (N,) array
         Timestamps at which the waveform will be evaluated.
-        Must use `waveform.t_of_f` to find those corresponding to
+        Must use `iphenot.t_of_f` to find those corresponding to
         the desired frequency.
 
     coeffs: dict
-        Coefficients as returned by `waveform.bunch_of_coeffs`
+        Coefficients as returned by `iphenot.bunch_of_coeffs`
 
     Returns
     -------
     amp, phase, freq, fdot: (N,) array
     """
 
-    # sfts.waveform functions are to be vectorised on demand.
+    # sfts.iphenot functions are to be vectorised on demand.
     # Here, we use `jax.vmap` to vectorise the time evaluation:
-    phase = jax.vmap(waveform.phi_of_t, in_axes=(0, None), out_axes=0)(times, coeffs)
+    phase = jax.vmap(iphenot.phi_of_t, in_axes=(0, None), out_axes=0)(times, coeffs)
 
     # Similarly, fdot can be obtained using jax's autodiff:
     frequency, fdot = jax.vmap(
-        jax.value_and_grad(waveform.f_of_t), in_axes=(0, None), out_axes=0
+        jax.value_and_grad(iphenot.f_of_t), in_axes=(0, None), out_axes=0
     )(times, coeffs)
 
-    amp = jax.vmap(waveform.amp_of_t, in_axes=(0, None), out_axes=0)(frequency, coeffs)
+    amp = jax.vmap(iphenot.amp_of_t, in_axes=(0, None), out_axes=0)(frequency, coeffs)
 
     return amp, phase, frequency, fdot
 
@@ -60,12 +60,12 @@ min_freq = 5.0
 max_freq = 10.0
 deltaT = 1 / 40.0
 
-data_coeffs = waveform.bunch_of_coeffs(
-    1.4 * waveform.MSUN_SI, 1.4 * waveform.MSUN_SI, chi1L=0, chi2L=0, distance=1e3
+data_coeffs = iphenot.bunch_of_coeffs(
+    1.4 * iphenot.MSUN_SI, 1.4 * iphenot.MSUN_SI, chi1L=0, chi2L=0, distance=1e3
 )
 
-t_min = waveform.t_of_f(min_freq, data_coeffs, check_bracket=True)
-t_max = waveform.t_of_f(max_freq, data_coeffs, check_bracket=True)
+t_min = iphenot.t_of_f(min_freq, data_coeffs, check_bracket=True)
+t_max = iphenot.t_of_f(max_freq, data_coeffs, check_bracket=True)
 t_s = t_min + deltaT * jnp.arange(jnp.ceil((t_max - t_min) / deltaT))
 
 amp_d, phase_d, _, _ = generate_waveform(t_s, data_coeffs)
@@ -76,7 +76,7 @@ data = amp_d * (jnp.cos(phase_d) + jnp.sin(phase_d))
 # Compute SFTs
 delta = 1
 P = 50  # Deltak / 2
-max_fdotdot = jax.grad(jax.grad(waveform.f_of_t))(t_max, data_coeffs)
+max_fdotdot = jax.grad(jax.grad(iphenot.f_of_t))(t_max, data_coeffs)
 T_sft = jnp.cbrt(2 * delta / max_fdotdot).astype(int)
 
 samples_per_sft = jnp.floor(T_sft / deltaT).astype(int)
@@ -131,9 +131,9 @@ def eval_templates(batch_ind, carry_on):
     )
 
     # Evaluate `coeffs` for the whole batch in parallel.
-    coeffs = jax.vmap(waveform.bunch_of_coeffs, in_axes=0, out_axes=0)(
-        m1s_sun * waveform.MSUN_SI,
-        m1s_sun * waveform.MSUN_SI,
+    coeffs = jax.vmap(iphenot.bunch_of_coeffs, in_axes=0, out_axes=0)(
+        m1s_sun * iphenot.MSUN_SI,
+        m1s_sun * iphenot.MSUN_SI,
         jnp.zeros_like(m1s_sun),
         jnp.zeros_like(m1s_sun),
         1e3 * jnp.ones_like(m1s_sun),

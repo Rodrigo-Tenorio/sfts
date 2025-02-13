@@ -1,6 +1,6 @@
 """
 YOU SHOULD NOT BE LOOKING HERE UNLESS YOU KNOW WHAT YOU ARE DOING.
-GO TO `waveform.py` FOR THE PUBLIC API.
+GO TO `iphenot.py` FOR THE PUBLIC API.
 
 IMRPhenomT Taylor T3 apporoximant adapted to work with `jax.jit` and `jax.vmap`.
 
