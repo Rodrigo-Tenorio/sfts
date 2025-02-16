@@ -36,7 +36,7 @@ If the tools provided by `sfts` were useful to you, we would appreciate a citati
 ```
 @article{Tenorio:2025XYZ}
 ```
-Whenever applicable, please consider also citing the `IMRPhenomT` papers [listed here][2].
+Whenever applicable, please consider also citing the `IMRPhenomT` papers [listed here][LALPhenomT].
 
 [sfts]: https://arxiv.org
 [LALPhenomT]: https://git.ligo.org/lscsoft/lalsuite/-/blob/master/lalsimulation/lib/LALSimIMRPhenomTPHM.c
