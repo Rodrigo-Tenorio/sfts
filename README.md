@@ -34,10 +34,18 @@ Alternatively, this repository itself is pip-installable.
 If the tools provided by `sfts` were useful to you, we would appreciate a citation of
 [the accompanying paper][sfts]:
 ```
-@article{Tenorio:2025XYZ}
+@article{Tenorio:2025yca,
+    author = "Tenorio, Rodrigo and Gerosa, Davide",
+    title = "{SFTs: a scalable data-analysis framework for long-duration gravitational-wave signals}",
+    eprint = "2502.11823",
+    archivePrefix = "arXiv",
+    primaryClass = "gr-qc",
+    month = "2",
+    year = "2025"
+}
 ```
 Whenever applicable, please consider also citing the `IMRPhenomT` papers [listed here][LALPhenomT].
 
-[sfts]: https://arxiv.org
+[sfts]: https://arxiv.org/abs/2502.11823
 [LALPhenomT]: https://git.ligo.org/lscsoft/lalsuite/-/blob/master/lalsimulation/lib/LALSimIMRPhenomTPHM.c
 [iphenot]: ./src/sfts/iphenot.py
