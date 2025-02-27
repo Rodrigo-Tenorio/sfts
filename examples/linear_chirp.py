@@ -33,28 +33,52 @@ def phase(times, phi_0, f_0, f_1):
     return phi_0 + 2 * jnp.pi * (f_0 * times + 0.5 * f_1 * times**2)
 
 
-def frequency(times, phi_0, f_0, f_1):
-    return jax.vmap(jax.grad(phase), in_axes=(0, None, None, None), out_axes=0)(
-        times, phi_0, f_0, f_1
-    ) / (2 * jnp.pi)
-
+key = jax.random.key(992791)
+P = 50
+T_sft = 10 * 86400.0
 
 # Generate data
-amp = 2.0
+amp = 1.
 phi_0 = jnp.pi / 3
-f_0 = 5e-3
+f_0 = 4.0
 f_1 = 5e-11
-deltaT = 1.0
-duration = 1800
+deltaT = 1 / (10.0)
+duration = 100 * 86400.0
 
 t_s = deltaT * jnp.arange(0, int(duration // deltaT))
 
-data = amp * jnp.sin(phase(t_s, phi_0, f_0, f_1))
+key, subkey = jax.random.split(key)
+data = amp * jnp.sin(phase(t_s, phi_0, f_0, f_1)) + 1 * jax.random.normal(
+    key, t_s.shape
+)
+
+# Paranoia checks
+
+df0 = 1 / T_sft
+df1 = 1 / (T_sft * duration)
+
+max_freq = f_0 + f_1 * duration
+fsamp = 2 / (deltaT)
+drift_bins = T_sft * f_1 / df0
+
+print(f"Maximum frequency: {max_freq} Hz")
+print(f"Sampling rate: {fsamp} Hz")
+print(f"SFT freq bins: {0.5 * T_sft // deltaT}")
+print(f"Drift bins per SFT: {drift_bins}")
+
+if drift_bins > P:
+    print("WARNING: P is too small given how many bins this signal drifts")
+
+if max_freq > fsamp:
+    raise ValueError(f"Maximum frequency {max_freq} too high for sampling rate {fsamp}")
+
+print(f"SFT frequency resolution: {df0:.2g} Hz")
+print(f"f_0 = {f_0} Hz = {f_0 / df0} bins")
+print(f"Spindown resolution: {df1:.2g} Hz/s")
+print(f"f_1 = {f_1} Hz/s = {f_1 / df1} bins")
+
 
 # Compute SFTs
-P = 10
-T_sft = 10.
-
 samples_per_sft = jnp.floor(T_sft / deltaT).astype(int)
 num_sfts = data.size // samples_per_sft
 t_alpha = T_sft * jnp.arange(num_sfts)
@@ -93,37 +117,47 @@ def scalar_product(A_alpha, phi_alpha, f_alpha, fdot_alpha):
 
 
 # Evaluate the *vectorised* scalar product for a bunch of equal-mass systems
-num_templates = 10_000
-batch_size = 10
+num_templates = 10000
+batch_size = 100
 num_batches = int(num_templates // batch_size)
-
-key = jax.random.key(992791)
 
 
 def eval_templates(batch_ind, carry_on):
 
     key, out_vals, amp_temps, phi0_temps, f0_temps, f1_temps = carry_on
+    bins_per_dim = 0.5
 
     key, key0, key1, key2, key3 = jax.random.split(key, 5)
-    amps = amp + (2 * jax.random.uniform(key0, (batch_size,)) - 1)
-    phi_0s = phi_0 + 0.1 * (2 * jax.random.uniform(key1, (batch_size,))- 1)
-    f_0s = 4e-3 + 2e-3 * jax.random.uniform(key2, (batch_size,))
-    f_1s = 4e-11 + 2e-11 * jax.random.uniform(key3, (batch_size,))
+    amps = amp + 0 * jax.random.uniform(
+        key0,
+        (batch_size,),
+        minval=-1,
+        maxval=1,
+    )
+    phi_0s = phi_0 + jax.random.uniform(
+        key1, (batch_size,), minval=-1e-3/duration, maxval=1e-3/duration
+    )
+    f_0s = f_0 + df0 * jax.random.uniform(
+        key2, (batch_size,), minval=-bins_per_dim, maxval=bins_per_dim
+    )
+    f_1s = f_1 + df1 * jax.random.uniform(
+        key3, (batch_size,), minval=-bins_per_dim, maxval=bins_per_dim
+    )
 
     A_alpha = amps[:, None]
     fdot_alpha = f_1s[:, None]
+
     phi_alpha = jax.vmap(
         phase,
         in_axes=(None, 0, 0, 0),
         out_axes=0,
     )(t_alpha, phi_0s, f_0s, f_1s)
+    f_alpha = f_0s[:, None] + t_alpha * f_1s[:, None]
 
-    f_alpha = jax.vmap(frequency, in_axes=(None, 0, 0, 0), out_axes=0)(
-        t_alpha, phi_0s, f_0s, f_1s
-    )
-
-    results = jax.vmap(scalar_product, in_axes=0, out_axes=0)(
-        A_alpha, phi_alpha, f_alpha, fdot_alpha
+    results = jnp.abs(
+        jax.vmap(scalar_product, in_axes=0, out_axes=0)(
+            A_alpha, phi_alpha, f_alpha, fdot_alpha
+        )
     )
 
     out_vals = jax.lax.dynamic_update_slice(
@@ -155,23 +189,29 @@ print("Ready for the loop...")
     (key, out_vals, amp_temps, phi0_temps, f0_temps, f1_temps),
 )
 
+sorting_keys = jnp.argsort(out_vals)
+
 for label, true, temps in zip(
     ["f_0", "f_1", "amp", "phi0"],
     [f_0, f_1, amp, phi_0],
     [f0_temps, f1_temps, amp_temps, phi0_temps],
 ):
-    X = temps - true
-
     fig, ax = plt.subplots()
     ax.grid()
-    ax.set(xlabel=f"{label} -- (Template - True)")
-    ax.plot(X, jnp.abs(out_vals), "o")
+    ax.set(xlabel=f"{label}")
+    ax.plot(temps, jnp.abs(out_vals), "o")
+    ax.axvline(true, ls="--", color="red")
     fig.savefig(f"{label}.pdf")
 
-sorting_keys = jnp.argsort(out_vals)
-
-fig, ax = plt.subplots()
-ax.set(xlabel="Amplitude", ylabel="Initial phase")
-ax.scatter(amp_temps[sorting_keys], phi0_temps[sorting_keys], c=out_vals[sorting_keys])
-ax.plot([amp], [phi_0], "*", color="black")
-fig.savefig("amp_phi0.pdf")
+    if label != "f_0":
+        fig, ax = plt.subplots()
+        ax.set(xlabel="f0 [Hz]", ylabel=label)
+        c = ax.scatter(
+            f0_temps[sorting_keys],
+            temps[sorting_keys],
+            c=out_vals[sorting_keys],
+            cmap="plasma",
+        )
+        ax.plot([f_0], [true], "*", color="black", markerfacecolor="none", markersize=10)
+        fig.colorbar(c)
+        fig.savefig(f"f_0_{label}.pdf")
