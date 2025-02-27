@@ -34,21 +34,21 @@ def phase(times, phi_0, f_0, f_1):
 
 
 key = jax.random.key(992791)
-P = 50
-T_sft = 10 * 86400.0
+P = 100
+T_sft = 86400.0
 
 # Generate data
-amp = 1.
+amp = 10.
 phi_0 = jnp.pi / 3
-f_0 = 4.0
+f_0 = 50.0
 f_1 = 5e-11
-deltaT = 1 / (10.0)
-duration = 100 * 86400.0
+deltaT = 1 / (200.0)
+duration = 10 * 86400.0
 
 t_s = deltaT * jnp.arange(0, int(duration // deltaT))
 
 key, subkey = jax.random.split(key)
-data = amp * jnp.sin(phase(t_s, phi_0, f_0, f_1)) + 1 * jax.random.normal(
+data = amp * jnp.sin(phase(t_s, phi_0, f_0, f_1)) + 0 * jax.random.normal(
     key, t_s.shape
 )
 
@@ -93,6 +93,8 @@ data_sfts = (
 
 
 # Compute scalar product
+# This returns an equivalent quantity to the phase-and-amplitude-marginalised likelihood
+# [See Eq. (7) of Tenorio & Gerosa 2025]
 def scalar_product(A_alpha, phi_alpha, f_alpha, fdot_alpha):
     # Non-signal-dependent values are passed here by clousure
     deltaf = 1 / T_sft
@@ -113,10 +115,10 @@ def scalar_product(A_alpha, phi_alpha, f_alpha, fdot_alpha):
 
     to_project = A_alpha * jnp.exp(1j * phi_alpha) * c_alpha.sum(axis=0)
 
-    return to_project.imag.sum()
+    return to_project.imag.sum()**2 + to_project.real.sum()**2
 
 
-# Evaluate the *vectorised* scalar product for a bunch of equal-mass systems
+# Evaluate the *vectorised* scalar product for a bunch of linear chirps
 num_templates = 10000
 batch_size = 100
 num_batches = int(num_templates // batch_size)
@@ -124,19 +126,10 @@ num_batches = int(num_templates // batch_size)
 
 def eval_templates(batch_ind, carry_on):
 
-    key, out_vals, amp_temps, phi0_temps, f0_temps, f1_temps = carry_on
-    bins_per_dim = 0.5
+    key, out_vals, f0_temps, f1_temps = carry_on
+    bins_per_dim = 1.0
 
     key, key0, key1, key2, key3 = jax.random.split(key, 5)
-    amps = amp + 0 * jax.random.uniform(
-        key0,
-        (batch_size,),
-        minval=-1,
-        maxval=1,
-    )
-    phi_0s = phi_0 + jax.random.uniform(
-        key1, (batch_size,), minval=-1e-3/duration, maxval=1e-3/duration
-    )
     f_0s = f_0 + df0 * jax.random.uniform(
         key2, (batch_size,), minval=-bins_per_dim, maxval=bins_per_dim
     )
@@ -144,57 +137,48 @@ def eval_templates(batch_ind, carry_on):
         key3, (batch_size,), minval=-bins_per_dim, maxval=bins_per_dim
     )
 
-    A_alpha = amps[:, None]
     fdot_alpha = f_1s[:, None]
 
     phi_alpha = jax.vmap(
         phase,
         in_axes=(None, 0, 0, 0),
         out_axes=0,
-    )(t_alpha, phi_0s, f_0s, f_1s)
+    )(t_alpha, jnp.zeros_like(f_0s), f_0s, f_1s)
     f_alpha = f_0s[:, None] + t_alpha * f_1s[:, None]
 
-    results = jnp.abs(
-        jax.vmap(scalar_product, in_axes=0, out_axes=0)(
-            A_alpha, phi_alpha, f_alpha, fdot_alpha
+    results = jax.vmap(scalar_product, in_axes=0, out_axes=0)(
+            jnp.ones_like(phi_alpha), phi_alpha, f_alpha, fdot_alpha
         )
-    )
 
     out_vals = jax.lax.dynamic_update_slice(
         out_vals, results, (batch_ind * batch_size,)
     )
-    amp_temps = jax.lax.dynamic_update_slice(amp_temps, amps, (batch_ind * batch_size,))
-    phi0_temps = jax.lax.dynamic_update_slice(
-        phi0_temps, phi_0s, (batch_ind * batch_size,)
-    )
     f0_temps = jax.lax.dynamic_update_slice(f0_temps, f_0s, (batch_ind * batch_size,))
     f1_temps = jax.lax.dynamic_update_slice(f1_temps, f_1s, (batch_ind * batch_size,))
 
-    return key, out_vals, amp_temps, phi0_temps, f0_temps, f1_temps
+    return key, out_vals, f0_temps, f1_temps
 
 
 # Note that `fori_loop` on its own jit-compiles `eval_templates`,
 # so no need to `jax.jit` anything so far.
 out_vals = jnp.zeros(num_templates)
-amp_temps = jnp.zeros(num_templates)
-phi0_temps = jnp.zeros(num_templates)
 f0_temps = jnp.zeros(num_templates)
 f1_temps = jnp.zeros(num_templates)
 
 print("Ready for the loop...")
-(key, out_vals, amp_temps, phi0_temps, f0_temps, f1_temps) = jax.lax.fori_loop(
+(key, out_vals, f0_temps, f1_temps) = jax.lax.fori_loop(
     0,
     num_batches,
     eval_templates,
-    (key, out_vals, amp_temps, phi0_temps, f0_temps, f1_temps),
+    (key, out_vals, f0_temps, f1_temps),
 )
 
 sorting_keys = jnp.argsort(out_vals)
 
 for label, true, temps in zip(
-    ["f_0", "f_1", "amp", "phi0"],
-    [f_0, f_1, amp, phi_0],
-    [f0_temps, f1_temps, amp_temps, phi0_temps],
+    ["f_0", "f_1"],
+    [f_0, f_1],
+    [f0_temps, f1_temps],
 ):
     fig, ax = plt.subplots()
     ax.grid()
@@ -205,7 +189,7 @@ for label, true, temps in zip(
 
     if label != "f_0":
         fig, ax = plt.subplots()
-        ax.set(xlabel="f0 [Hz]", ylabel=label)
+        ax.set(xlabel="f_0 [Hz]", ylabel=label)
         c = ax.scatter(
             f0_temps[sorting_keys],
             temps[sorting_keys],
@@ -215,3 +199,4 @@ for label, true, temps in zip(
         ax.plot([f_0], [true], "*", color="black", markerfacecolor="none", markersize=10)
         fig.colorbar(c)
         fig.savefig(f"f_0_{label}.pdf")
+        
