@@ -1,23 +1,17 @@
 import jax.numpy as jnp
 from jax.scipy import special
 
-def discrete_dirichlet(k, N):
+def dirichlet_kernel(f, T_sft):
     """
-    Dirichlet kernel using discrete variables.
+    Dirichlet kernel.
     See Appendix of Tenorio & Gerosa (2025).
-
-    Parameters
-    ----------
-    k:
-        Frequency in ``index'' units (i.e. `floor(f / Tsft)`).
-    N:
-        Number of time-domain samples
     """
-    return N * jnp.exp(1j * jnp.pi * k) * jnp.sinc(k)
+    return T_sft * jnp.exp(1j * jnp.pi * f * T_sft) * jnp.sinc(f * T_sft)
 
 def fresnel_kernel(f_0, f_1, T_sft):
     """
     Fresnel kernel.
+    See Eq. (29) of Tenorio & Gerosa (2025).
     """
     quot = f_0 / f_1
     factor = jnp.sqrt(2 * f_1)
