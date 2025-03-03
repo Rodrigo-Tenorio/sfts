@@ -4,9 +4,11 @@ in which amplitude parameters are not marginalized out.
 """
 
 import jax
+
+jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
-from sfts import kernels, iphenot
+from sfts import kernels
 
 try:
     import matplotlib.pyplot as plt
@@ -33,24 +35,25 @@ def phase(times, phi_0, f_0, f_1):
     return phi_0 + 2 * jnp.pi * (f_0 * times + 0.5 * f_1 * times**2)
 
 
-key = jax.random.key(992791)
-P = 100
-T_sft = 86400.0
+key = jax.random.key(12322)
 
 # Generate data
-amp = 10.
+amp = 25.0
 phi_0 = jnp.pi / 3
-f_0 = 50.0
-f_1 = 5e-11
-deltaT = 1 / (200.0)
-duration = 10 * 86400.0
+f_0 = 1.0
+f_1 = 0.0
+deltaT = 1 / 4.0
+duration = 1000 * 86400.0
 
-t_s = deltaT * jnp.arange(0, int(duration // deltaT))
+P = 100
+T_sft = 100 * 86400.0
+
+t_s = deltaT * jnp.arange(int(duration // deltaT))
 
 key, subkey = jax.random.split(key)
-data = amp * jnp.sin(phase(t_s, phi_0, f_0, f_1)) + 0 * jax.random.normal(
-    key, t_s.shape
-)
+data = amp * jnp.sin(phase(t_s, phi_0, f_0, f_1)) 
+
+dd_term = (deltaT * data**2).sum()
 
 # Paranoia checks
 
@@ -58,7 +61,7 @@ df0 = 1 / T_sft
 df1 = 1 / (T_sft * duration)
 
 max_freq = f_0 + f_1 * duration
-fsamp = 2 / (deltaT)
+fsamp = 1.0 / (deltaT)
 drift_bins = T_sft * f_1 / df0
 
 print(f"Maximum frequency: {max_freq} Hz")
@@ -93,9 +96,8 @@ data_sfts = (
 
 
 # Compute scalar product
-# This returns an equivalent quantity to the phase-and-amplitude-marginalised likelihood
 # [See Eq. (7) of Tenorio & Gerosa 2025]
-def scalar_product(A_alpha, phi_alpha, f_alpha, fdot_alpha):
+def det_stat(A_alpha, phi_alpha, f_alpha, fdot_alpha):
     # Non-signal-dependent values are passed here by clousure
     deltaf = 1 / T_sft
 
@@ -108,14 +110,15 @@ def scalar_product(A_alpha, phi_alpha, f_alpha, fdot_alpha):
 
     c_alpha = (
         deltaf
-        * data_sfts[k_min_max, jnp.arange(num_sfts)].conj()
-        * kernels.fresnel_kernel(f_alpha - k_min_max * deltaf, fdot_alpha, T_sft)
+        * data_sfts[k_min_max, jnp.arange(data_sfts.shape[1])].conj()
+        # * kernels.fresnel_kernel(f_alpha - k_min_max * deltaf, fdot_alpha, T_sft)
+        * kernels.dirichlet_kernel(f_alpha - k_min_max * deltaf, T_sft)
         * zero_mask
     )
+    dh_term = (A_alpha * (jnp.exp(1j * phi_alpha) * c_alpha.sum(axis=0)).imag).sum()
+    hh_term = 0.5 * T_sft * (A_alpha**2).sum()
 
-    to_project = A_alpha * jnp.exp(1j * phi_alpha) * c_alpha.sum(axis=0)
-
-    return to_project.imag.sum()**2 + to_project.real.sum()**2
+    return dh_term - 0.5 * (dd_term + hh_term)
 
 
 # Evaluate the *vectorised* scalar product for a bunch of linear chirps
@@ -126,64 +129,75 @@ num_batches = int(num_templates // batch_size)
 
 def eval_templates(batch_ind, carry_on):
 
-    key, out_vals, f0_temps, f1_temps = carry_on
-    bins_per_dim = 1.0
+    key, out_vals = carry_on
 
     key, key0, key1, key2, key3 = jax.random.split(key, 5)
-    f_0s = f_0 + df0 * jax.random.uniform(
-        key2, (batch_size,), minval=-bins_per_dim, maxval=bins_per_dim
+    f_0s = f_0 + (1/duration) * jax.random.uniform(key0, (batch_size,), minval=-1.0, maxval=1.0)
+    f_1s = f_1 + 0 * (1/duration**2) * jax.random.uniform(
+        key1, (batch_size,), minval=-1.0, maxval=1.0
     )
-    f_1s = f_1 + df1 * jax.random.uniform(
-        key3, (batch_size,), minval=-bins_per_dim, maxval=bins_per_dim
+    amps = jax.random.uniform(key2, (batch_size,), minval=0, maxval=50)
+    phi_0s =  jax.random.uniform(
+            key3, (batch_size,), minval=0* jnp.pi, maxval=2 * jnp.pi
     )
 
-    fdot_alpha = f_1s[:, None]
+    # Technically too general, but safer when doing sums
+    A_alpha = amps[:, None] * jnp.ones_like(t_alpha)
+    fdot_alpha = f_1s[:, None] * jnp.ones_like(t_alpha)
 
     phi_alpha = jax.vmap(
         phase,
         in_axes=(None, 0, 0, 0),
         out_axes=0,
-    )(t_alpha, jnp.zeros_like(f_0s), f_0s, f_1s)
-    f_alpha = f_0s[:, None] + t_alpha * f_1s[:, None]
+    )(t_alpha, phi_0s, f_0s, f_1s)
 
-    results = jax.vmap(scalar_product, in_axes=0, out_axes=0)(
-            jnp.ones_like(phi_alpha), phi_alpha, f_alpha, fdot_alpha
-        )
+    f_alpha = jax.vmap(
+        jax.vmap(jax.grad(phase), in_axes=(0, None, None, None), out_axes=0),
+        in_axes=(None, 0, 0, 0),
+        out_axes=0,
+    )(t_alpha, phi_0s, f_0s, f_1s) / (2 * jnp.pi)
 
-    out_vals = jax.lax.dynamic_update_slice(
-        out_vals, results, (batch_ind * batch_size,)
+    stats = jax.vmap(det_stat, in_axes=0, out_axes=0)(
+        A_alpha, phi_alpha, f_alpha, fdot_alpha
     )
-    f0_temps = jax.lax.dynamic_update_slice(f0_temps, f_0s, (batch_ind * batch_size,))
-    f1_temps = jax.lax.dynamic_update_slice(f1_temps, f_1s, (batch_ind * batch_size,))
 
-    return key, out_vals, f0_temps, f1_temps
+    results = jnp.c_[f_0s, f_1s, amps, phi_0s, stats]
+
+    out_vals = jax.lax.dynamic_update_slice_in_dim(
+        out_vals, results, batch_ind * batch_size, axis=0
+    )
+
+    return key, out_vals
 
 
 # Note that `fori_loop` on its own jit-compiles `eval_templates`,
 # so no need to `jax.jit` anything so far.
-out_vals = jnp.zeros(num_templates)
-f0_temps = jnp.zeros(num_templates)
-f1_temps = jnp.zeros(num_templates)
+header = ["f_0", "f_1", "amp", "phi_0", "stat"]
+out_vals = jnp.zeros((num_templates, 5))
 
 print("Ready for the loop...")
-(key, out_vals, f0_temps, f1_temps) = jax.lax.fori_loop(
+(key, out_vals) = jax.lax.fori_loop(
     0,
     num_batches,
     eval_templates,
-    (key, out_vals, f0_temps, f1_temps),
+    (key, out_vals),
 )
 
-sorting_keys = jnp.argsort(out_vals)
+sorting_keys = jnp.argsort(out_vals[:, -1])
 
-for label, true, temps in zip(
-    ["f_0", "f_1"],
-    [f_0, f_1],
-    [f0_temps, f1_temps],
+for ind, (label, true) in enumerate(
+    zip(
+        ["f_0", "f_1", "amp", "phi_0"],
+        [f_0, f_1, amp, phi_0],
+    )
 ):
+
+    temps = out_vals[:, ind]
+
     fig, ax = plt.subplots()
     ax.grid()
     ax.set(xlabel=f"{label}")
-    ax.plot(temps, jnp.abs(out_vals), "o")
+    ax.plot(temps, out_vals[:, -1], "o")
     ax.axvline(true, ls="--", color="red")
     fig.savefig(f"{label}.pdf")
 
@@ -191,12 +205,25 @@ for label, true, temps in zip(
         fig, ax = plt.subplots()
         ax.set(xlabel="f_0 [Hz]", ylabel=label)
         c = ax.scatter(
-            f0_temps[sorting_keys],
+            out_vals[sorting_keys, 0],
             temps[sorting_keys],
-            c=out_vals[sorting_keys],
+            c=out_vals[sorting_keys, -1],
             cmap="plasma",
         )
-        ax.plot([f_0], [true], "*", color="black", markerfacecolor="none", markersize=10)
+        ax.plot(
+            [f_0], [true], "*", color="black", markerfacecolor="none", markersize=10
+        )
         fig.colorbar(c)
         fig.savefig(f"f_0_{label}.pdf")
-        
+
+fig, ax = plt.subplots()
+ax.set(xlabel="amp", ylabel="phi_0")
+c = ax.scatter(
+    out_vals[sorting_keys, 2],
+    out_vals[sorting_keys, 3],
+    c=out_vals[sorting_keys, -1],
+    cmap="plasma",
+)
+ax.plot([amp], [phi_0], "*", color="black", markerfacecolor="none", markersize=10)
+fig.colorbar(c)
+fig.savefig("amp_phi_0.pdf")
