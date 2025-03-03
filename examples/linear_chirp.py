@@ -41,17 +41,17 @@ key = jax.random.key(12322)
 amp = 25.0
 phi_0 = jnp.pi / 3
 f_0 = 1.0
-f_1 = 0.0
+f_1 = 1e-12
 deltaT = 1 / 4.0
 duration = 1000 * 86400.0
 
-P = 100
+P = 1000
 T_sft = 100 * 86400.0
 
 t_s = deltaT * jnp.arange(int(duration // deltaT))
 
 key, subkey = jax.random.split(key)
-data = amp * jnp.sin(phase(t_s, phi_0, f_0, f_1)) 
+data = amp * jnp.sin(phase(t_s, phi_0, f_0, f_1))
 
 dd_term = (deltaT * data**2).sum()
 
@@ -111,8 +111,7 @@ def det_stat(A_alpha, phi_alpha, f_alpha, fdot_alpha):
     c_alpha = (
         deltaf
         * data_sfts[k_min_max, jnp.arange(data_sfts.shape[1])].conj()
-        # * kernels.fresnel_kernel(f_alpha - k_min_max * deltaf, fdot_alpha, T_sft)
-        * kernels.dirichlet_kernel(f_alpha - k_min_max * deltaf, T_sft)
+        * kernels.fresnel_kernel(f_alpha - k_min_max * deltaf, fdot_alpha, T_sft)
         * zero_mask
     )
     dh_term = (A_alpha * (jnp.exp(1j * phi_alpha) * c_alpha.sum(axis=0)).imag).sum()
@@ -132,13 +131,15 @@ def eval_templates(batch_ind, carry_on):
     key, out_vals = carry_on
 
     key, key0, key1, key2, key3 = jax.random.split(key, 5)
-    f_0s = f_0 + (1/duration) * jax.random.uniform(key0, (batch_size,), minval=-1.0, maxval=1.0)
-    f_1s = f_1 + 0 * (1/duration**2) * jax.random.uniform(
-        key1, (batch_size,), minval=-1.0, maxval=1.0
+    f_0s = f_0 + (1 / duration) * jax.random.uniform(
+        key0, (batch_size,), minval=-2, maxval=2
     )
-    amps = jax.random.uniform(key2, (batch_size,), minval=0, maxval=50)
-    phi_0s =  jax.random.uniform(
-            key3, (batch_size,), minval=0* jnp.pi, maxval=2 * jnp.pi
+    f_1s = f_1 + (1 / duration**2) * jax.random.uniform(
+        key1, (batch_size,), minval=-0.5, maxval=0.5
+    )
+    amps = jax.random.uniform(key2, (batch_size,), minval=10, maxval=35)
+    phi_0s = phi_0 + jax.random.uniform(
+        key3, (batch_size,), minval=-phi_0, maxval=2 * jnp.pi - phi_0
     )
 
     # Technically too general, but safer when doing sums
