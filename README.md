@@ -20,9 +20,9 @@ inspiral part of the  [`IMRPhenomT` waveform approximant][LALPhenomT].
 
 The SFT convention in this package is compatible with that in the
 [LVK  `.sft` file format](https://dcc.ligo.org/LIGO-T040164/public). 
-Checlout [fasttracks](https://github.com/Rodrigo-Tenorio/sfts)'
+Checkout [fasttracks](https://github.com/Rodrigo-Tenorio/sfts)'
 [search example](https://github.com/Rodrigo-Tenorio/fasttracks/blob/master/examples/run_binary_search.py) 
-to see how to parse `.sft` files into `jax` arrays.
+to learn about reading `.sft` files into `jax` arrays.
 
 # How to install
 
