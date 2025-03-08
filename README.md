@@ -10,14 +10,19 @@ Short Fourier Transforms for Fresnel-weighted Template Summation.
 Implementation of gravitational-wave data-analysis tools described in [Tenorio & Gerosa (2025)][sfts]
 to operate using Short Fourier Transforms (SFTs).
 
-See [this simple example](./examples/bns_inspiral.py) for a quick-start on
-using [`iphenot`][iphenot] (`/ˈaɪv ˈnɒt/`) and SFTs.
+See the [examples](./examples) for a quick-start on using SFTs and [`iphenot`][iphenot] (`/ˈaɪv ˈnɒt/`).
 
-The package is composed of two main modules:
+`sfts` contains two main modules:
 
+1. [kernels.py](./src/sfts/kernels.py): Fresnel and Dirichlet kernels to compute scalar products using SFTs.
 1. [iphenot.py][iphenot]: [jaxified](https://github.com/jax-ml/jax) re-implementation of the
 inspiral part of the  [`IMRPhenomT` waveform approximant][LALPhenomT].
-1. [kernels.py](./src/sfts/kernels.py): Fresnel and Dirichlet kernels to compute scalar products using SFTs.
+
+The SFT convention in this package is compatible with that in the
+[LVK  `.sft` file format](https://dcc.ligo.org/LIGO-T040164/public). 
+Checlout [fasttracks](https://github.com/Rodrigo-Tenorio/sfts)'
+[search example](https://github.com/Rodrigo-Tenorio/fasttracks/blob/master/examples/run_binary_search.py) 
+to see how to parse `.sft` files into `jax` arrays.
 
 # How to install
 
