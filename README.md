@@ -44,13 +44,17 @@ Alternatively, this repository itself is pip-installable.
 If the tools provided by `sfts` were useful to you, we would appreciate a citation of
 [the accompanying paper][sfts]:
 ```
-@article{Tenorio:2025yca,
+@article{Tenorio:2025gci,
     author = "Tenorio, Rodrigo and Gerosa, Davide",
-    title = "{SFTs: a scalable data-analysis framework for long-duration gravitational-wave signals}",
+    title = "{Scalable data-analysis framework for long-duration gravitational waves from compact binaries using short Fourier transforms}",
     eprint = "2502.11823",
     archivePrefix = "arXiv",
     primaryClass = "gr-qc",
-    month = "2",
+    doi = "10.1103/PhysRevD.111.104044",
+    journal = "Phys. Rev. D",
+    volume = "111",
+    number = "10",
+    pages = "104044",
     year = "2025"
 }
 ```
